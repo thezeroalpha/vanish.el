@@ -33,12 +33,17 @@ To change the vanish prefix from `C-c v` to e.g. `C-c q h`:
 (custom-set-variables '(vanish-prefix (kbd "C-c q h") 'now))
 ```
 
-To add the option to hide Elisp comments:
+To define additional parts of the buffer to hide, customize `vanish-exprs`.
+For example, for Elisp comments, you could add:
 
 ```emacs-lisp
-(add-to-list 'vanish-exprs `(elispcomment . (:key ?c :name "Elisp comment" :start ,(rx bol (* blank) ";") :end ,(rx eol))))
+(add-to-list 'vanish-exprs 
+    `(elispcomment . (:key ?c 
+                      :name "Elisp comment" 
+                      :start ,(rx bol (* blank) ";") 
+                      :end ,(rx eol))))
 ```
 
 ## Usage
 Enable `vanish-mode`, then you can hide various parts of the buffer using (by default) `C-c v KEY` where `KEY` is a key defined in `vanish-exprs`.
-For example, hide `#+TBLFM` lines in Org mode with `C-c v f`.
+For example, with the default settings, you can hide `#+TBLFM` lines (used in Org mode) with `C-c v f`.
