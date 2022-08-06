@@ -3,7 +3,7 @@ This package lets you define regions of text to hide, such as TBLFM lines and dr
 
 ## Demo
 
-https://user-images.githubusercontent.com/8124851/183263651-0ec06d41-53c1-426f-967b-b82d66a99d38.mp4
+<video src="https://user-images.githubusercontent.com/8124851/183263651-0ec06d41-53c1-426f-967b-b82d66a99d38.mp4"></video>
 
 ## Installation
 Several options:
