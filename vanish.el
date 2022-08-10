@@ -1,4 +1,4 @@
-;;; vanish.el --- Hide different parts of a buffer. -*- lexical-binding: t; -*-
+;;; vanish.el --- Hide different parts of a buffer -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2022  Alex Balgavy
 
@@ -7,38 +7,42 @@
 ;; Keywords: convenience
 
 ;; Package-Version: 0.1
-;; Package-Requires: ((emacs "24.1"))
+;; Package-Requires: ((emacs "26.1"))
 
 ;;; Commentary:
 
 ;; This package lets you define regions of text to hide, such as TBLFM
 ;; lines and drawers, using regular expressions. It provides a minor
-;; mode, `vanish-mode`, and creates key bindings to toggle hiding
-;; the predefined parts of the buffer based on a configurable prefix
-;; (by default `C-c v`).
+;; mode, `vanish-mode`, and three functions. `vanish-hide` to hide an
+;; element, `vanish-unhide` to show an element, and `vanish-toggle` to
+;; toggle visibility (and hide/show depending on the universal
+;; argument; see its docstring). The suggested use is to bind a key to
+;; `vanish-toggle` in `vanish-mode`.
 
+;; FIXME: (add-to-list 'vanish-exprs `(comment . (:key ?c :start ,(rx bol (* blank) ";") :end ,(rx eol) :name "Comment" :include-end t)))
+;;; Code:
 (defgroup vanish nil
   "Customization group for `vanish'."
   :group 'convenience)
 
 ;; Specifications of regions of text to hide.
+;; TODO: document include-end keyword
 (defcustom vanish-exprs
   `((tblfm . (:key ?f
                    :start ,(rx bol (* blank) "#+TBLFM:")
                    :end ,(rx eol)
-                   :name "TBLFM"))
+                   :name "TBLFM"
+                   :include-end t))
     (drawer . (:key ?d
                     :start ,(rx bol (* blank) ":" (* (not ":")) ":" eol)
                     :end ,(rx bol (* blank) ":END:" eol)
-                    :name "drawer")))
-  "Expressions to hide. Each expression has a :key (the key to press to show/hide), :start and :end as regular expressions to determine the start/end of the element, and a :name."
+                    :name "drawer"
+                    :include-end nil)))
+  "Expressions to hide.
+Each expression has a :key (the key to press to show/hide),
+:start and :end as regular expressions to determine the start/end
+of the element, and a :name."
   :type '(alist :key-type symbol :value-type (plist :key-type symbol :value-type (choice (character :tag "Keybinding") (regexp :tag "Regex"))))
-  :group 'vanish)
-
-;; Prefix key for vanish minor mode keymap
-(defcustom vanish-prefix (kbd "C-c v")
-  "Prefix for vanish keymap"
-  :type 'key-sequence
   :group 'vanish)
 
 ;; Keymap for vanish mode, initially empty, filled on activation
@@ -47,24 +51,24 @@
 
 ;; Minor mode for vanish.
 (define-minor-mode vanish-mode
-  "Turn on Vanish mode"
+  "Turn on Vanish mode."
   :lighter " Vanish"
   :group 'vanish
   :keymap vanish-mode-map
-  (vanish--initialize vanish-prefix)
   ;; When vanish mode disabled, show everything that was hidden.
   (unless vanish-mode (vanish-show-all)))
 
 ;; Buffer-local list of elements that are currently hidden.
 (defvar-local vanish--hidden-elements
   (list)
-  "Elements currently hidden")
+  "Elements currently hidden.")
 
 (defun vanish-set-hide (element hidden)
-  "Hide ELEMENT (symbol) if HIDDEN is t, show if it's nil,"
+  "Hide ELEMENT (symbol) if HIDDEN is t, show if it's nil."
     (let* ((element-vanish-expr (cdr (assoc element vanish-exprs)))
            (vanish-start-re (plist-get element-vanish-expr :start))
-           (vanish-end-re (plist-get element-vanish-expr :end)))
+           (vanish-end-re (plist-get element-vanish-expr :end))
+           (include-end (plist-get element-vanish-expr :include-end)))
       (save-excursion
         (let* ((beg (point-min))
                (end (point-max)))
@@ -74,16 +78,11 @@
               (beginning-of-line 1)
               (when (looking-at vanish-start-re)
                 (let* ((start (1- (match-beginning 0)))
-                       (limit (save-excursion
-                                (outline-next-heading)
-                                (point))))
+                       (limit (point-max)))
                   (if (re-search-forward vanish-end-re limit t)
-                      (outline-flag-region start (point-at-eol) hidden)
+                      ;; `with-silent-modifications` necessary here to ensure font lock doesn't override this
+                      (with-silent-modifications (put-text-property (1+ start) (if include-end (1+ (point-at-eol)) (point-at-eol)) 'invisible hidden nil))
                     (user-error "Error"))))))))
-      ;; Set org-cycle-hook
-      (if hidden
-          (add-hook 'org-cycle-hook #'vanish--cycle-hook nil 'local)
-        (remove-hook 'org-cycle-hook #'vanish-cycle-hook 'local))
 
       ;; Set buffer-local list of hidden elements
       (if hidden
@@ -92,11 +91,6 @@
 
       ;; Let the user know what happened
       (message "%s now %s." (plist-get element-vanish-expr :name) (if (memq element vanish--hidden-elements) "hidden" "shown"))))
-
-(defun vanish--cycle-hook (&rest _)
-  "Re-hide all currently hidden elements when Org visibility is cycled."
-  (mapc (lambda (e) (vanish-set-hide e t))
-        vanish--hidden-elements))
 
 (defun vanish-show-all ()
   "Show all currenltly hidden elements."
@@ -108,29 +102,35 @@
   (let ((elem-is-hidden (memq elem vanish--hidden-elements)))
     (vanish-set-hide elem (not elem-is-hidden))))
 
-(defun vanish-hide (prefix elem)
-  "Toggle hiding of ELEM if PREFIX is 1, hide if PREFIX <= 0, show if PREFIX > 1."
-  (cond ((= prefix 1)
-         (vanish-toggle-hide elem))
-        ((<= prefix 0)
-         (vanish-set-hide elem nil))
-        ((> prefix 1)
-         (vanish-set-hide elem t))))
+(defun vanish--choose-elt (prompt)
+  "Prompt the user to choose an element, with PROMPT."
+  (let* ((opts (mapcar (lambda (e) (list (plist-get (cdr e) :key)
+                                         (symbol-name (car e))))
+                       vanish-exprs))
+         (choice (read-multiple-choice prompt opts)))
+    (intern-soft (nth 1 choice))))
 
-(defun vanish--create-binding (kbd-prefix elem)
-  "Create a binding for ELEM based on its corresponding `:key` in `vanish-exprs`, starting with KBD-PREFIX."
-  (let* ((element-vanish-exp (cdr (assoc elem vanish-exprs)))
-         (element-key (plist-get element-vanish-exp :key))
-         (element-name (plist-get element-vanish-exp :name)))
-    (define-key vanish-mode-map (concat kbd-prefix (char-to-string element-key))
-      `(lambda (prefix)
-         ,(format "Toggle hiding of %s if PREFIX is 1, hide if PREFIX <= 0, show if PREFIX > 1." element-name)
-         (interactive "p") (vanish-hide prefix (quote ,elem))))))
+(defun vanish-hide ()
+  "Interactively choose an element to hide."
+  (interactive)
+  (vanish-set-hide (vanish--choose-elt "Hide: ") t))
 
-(defun vanish--initialize (kbd-prefix)
-  "Set up all key bindings starting with KBD-PREFIX"
-  (mapc (lambda (e) (vanish--create-binding kbd-prefix (car e)))
-        vanish-exprs))
+(defun vanish-unhide ()
+  "Interactively choose an element to show."
+  (interactive)
+  (vanish-set-hide (vanish--choose-elt "Show: ") nil))
+
+(defun vanish-toggle (prefix)
+  "Interactively choose an element to toggle visibility.
+With PREFIX > 0, show. With a PREFIX <= 0, hide."
+  (interactive "P")
+  (let ((prefnum (prefix-numeric-value prefix)))
+    (cond ((not prefix)
+           (vanish-toggle-hide (vanish--choose-elt "Toggle visibility: ")))
+          ((<= prefnum 0)
+           (vanish-unhide))
+          ((> prefnum 0)
+           (vanish-hide)))))
 
 (provide 'vanish)
 ;;; vanish.el ends here

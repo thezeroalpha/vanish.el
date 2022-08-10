@@ -1,5 +1,5 @@
 # vanish.el: hide different parts of a buffer
-This package lets you define regions of text to hide, such as TBLFM lines and drawers, using regular expressions. It provides a minor mode, `vanish-mode`, and creates key bindings to toggle hiding the predefined parts of the buffer based on a configurable prefix (by default `C-c v`).
+This package lets you define regions of text to hide, such as TBLFM lines and drawers, using regular expressions. It provides a minor mode, `vanish-mode`, and creates key bindings to toggle hiding the predefined parts of the buffer based on a configurable prefix (by default `C-c -`).
 
 ## Demo
 
@@ -27,7 +27,7 @@ Several options:
 ## Configuration
 After changing variables, disable and re-enable `vanish-mode` to update the keymap.
 
-To change the vanish prefix from `C-c v` to e.g. `C-c q h`:
+To change the vanish prefix from `C-c -` to e.g. `C-c q h`:
 
 ``` emacs-lisp
 (custom-set-variables '(vanish-prefix (kbd "C-c q h") 'now))
@@ -37,13 +37,13 @@ To define additional parts of the buffer to hide, customize `vanish-exprs`.
 For example, for Elisp comments, you could add:
 
 ```emacs-lisp
-(add-to-list 'vanish-exprs 
-    `(elispcomment . (:key ?c 
-                      :name "Elisp comment" 
-                      :start ,(rx bol (* blank) ";") 
+(add-to-list 'vanish-exprs
+    `(elispcomment . (:key ?c
+                      :name "Elisp comment"
+                      :start ,(rx bol (* blank) ";")
                       :end ,(rx eol))))
 ```
 
 ## Usage
-Enable `vanish-mode`, then you can hide various parts of the buffer using (by default) `C-c v KEY` where `KEY` is a key defined in `vanish-exprs`.
-For example, with the default settings, you can hide `#+TBLFM` lines (used in Org mode) with `C-c v f`.
+Enable `vanish-mode`, then you can hide various parts of the buffer using (by default) `C-c - KEY` where `KEY` is a key defined in `vanish-exprs`.
+For example, with the default settings, you can hide `#+TBLFM` lines (used in Org mode) with `C-c - f`.
