@@ -63,6 +63,31 @@ of the element, and a :name."
   (list)
   "Elements currently hidden.")
 
+(defvar-local vanish--hidden-regions
+  (list)
+  "Regions currently hidden.")
+
+(defun vanish--set-hidden-property (start end ishidden)
+  ""
+  (with-silent-modifications (put-text-property start end 'invisible ishidden)))
+
+(defun vanish--hide-region (min max)
+  (vanish--set-hidden-property min max t)
+  (push (list min max) vanish--hidden-regions)
+  (deactivate-mark))
+(defun vanish--unhide-region (min max)
+  (vanish--set-hidden-property min max nil)
+  (setq vanish--hidden-regions (remove (list min max) vanish--hidden-regions)))
+
+(defun vanish-hide-region (min max)
+  ""
+  (interactive "r")
+  (cond ((region-active-p)
+         (vanish--hide-region min max))
+        (t
+         (dolist (mp vanish--hidden-regions)
+           (vanish--unhide-region (car mp) (cadr mp))))))
+
 (defun vanish-set-hide (element hidden)
   "Hide ELEMENT (symbol) if HIDDEN is t, show if it's nil."
     (let* ((element-vanish-expr (cdr (assoc element vanish-exprs)))
@@ -94,8 +119,8 @@ of the element, and a :name."
 
 (defun vanish-show-all ()
   "Show all currenltly hidden elements."
-  (mapc (lambda (e) (vanish-set-hide e nil))
-        vanish--hidden-elements))
+  (dolist (e vanish--hidden-elements) (vanish-set-hide e nil))
+  (dolist (r vanish--hidden-regions) (vanish--set-hidden-property (car r) (cadr r) nil)))
 
 (defun vanish-toggle-hide (elem)
   "Toggle hiding of ELEM."
